@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 Carbon Bombs: Potential Exposure to Climatic Extremes Induced by the Largest Fossil Fuel Projects
 
 
@@ -34,3 +35,7 @@ References
 
 \[1] Kühne, K., Bartsch, N., Driskell Tate, R., Higson, J., \& Habet, A. (2022). "Carbon Bombs" – Mapping key fossil fuel projects. Energy Policy, 166, 112950. \[2] Laridon, A., Pietroiusti, R., Smith, C., et al. (2026, in prep.). A framework linking project-level greenhouse gas emissions to additional climate extremes exposure and multi-century committed change. \[3] Global Carbon Budget 2025. Earth System Science Data, 18(5). \[4] Abram, N. J., et al. (2025). Quantifying the regional to global climate impacts of individual fossil fuel projects to inform decision-making. npj Climate Action, 4(1), 92. \[5] Grant, L., Vanderkelen, I., Gudmundsson, L., Fischer, E., Seneviratne, S. I., \& Thiery, W. (2025). Global emergence of unprecedented lifetime exposure to climate extremes. Nature, 641, 374–379.
 
+=======
+
+
+>>>>>>> 734e2c0f945dee9d70efc5948f2ec78db448c661
