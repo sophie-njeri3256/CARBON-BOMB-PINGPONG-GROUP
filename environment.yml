@@ -9,6 +9,7 @@ dependencies:
   - xarray
   - geopandas
   - matplotlib
+  - pycountry
   - cartopy
   - regionmask
   - scipy
