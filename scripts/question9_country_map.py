@@ -1,31 +1,26 @@
-"""Create the Question 9 country exposure map for the 2025 birth cohort."""
+# Short code for Question 9.
 
-import pickle
-import sys
-from pathlib import Path
+import pickle                         # Reads saved Python objects.
+import sys                            # Lets the script find project modules.
+from pathlib import Path             # Builds file and folder paths.
 
-import geopandas as gpd
-import matplotlib.pyplot as plt
-import pycountry
-import xarray as xr
-from matplotlib import colors
+import geopandas as gpd              # Handles country polygons.
+import matplotlib.pyplot as plt      # Creates maps.
+import pycountry                     # Converts ordinary country names to ISO3 codes.
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+ROOT = Path(__file__).resolve().parents[1]  # Finds the project folder.
+if str(ROOT) not in sys.path:          # Checks whether the project folder is searchable.
+    sys.path.insert(0, str(ROOT))      # Adds the project folder to Python's search list.
 
-from scripts.question7_cohort_datasets import (
-    load_cohort_datasets,
-    merge_cohort_datasets,
-)
+from scripts.question7_cohort_datasets import load_cohorts, merge_cohorts  # Reuses Question 7 code.
 
 
-DATA_DIR = PROJECT_ROOT / "Data"
-COUNTRY_DATASET = DATA_DIR / "question7_countries_by_birth_year.pkl"
-BORDERS_FILE = DATA_DIR / "gdf_country_borders.pkl"
-OUTPUT_FILE = PROJECT_ROOT / "figures" / "question9_country_exposure_2025.png"
+DATA = ROOT / "Data"                         # Finds the data folder.
+COUNTRY_DATA = DATA / "question7_countries_by_birth_year.pkl"  # Merged country Dataset.
+BORDERS = DATA / "gdf_country_borders.pkl"  # Country polygons.
+OUTPUT = ROOT / "figures" / "question9_country_exposure_2025.png"  # Saved figure.
 
-HAZARD_NAMES = {
+HAZARDS = {                           # Converts data names into readable titles.
     "burntarea": "Wildfire",
     "cropfailedarea": "Crop failure",
     "driedarea": "Drought",
@@ -34,7 +29,7 @@ HAZARD_NAMES = {
     "tropicalcyclonedarea": "Tropical cyclone",
 }
 
-COUNTRY_ALIASES = {
+ALIASES = {                           # Handles names that do not match pycountry directly.
     "Bolivia (Plurinational State of)": "BOL",
     "Democratic Republic of the Congo": "COD",
     "China, Hong Kong SAR": "HKG",
@@ -49,99 +44,67 @@ COUNTRY_ALIASES = {
 }
 
 
-def country_name_to_iso3(name):
-    """Convert a dataset country name to the ISO3 code used by the border file."""
-    if name in COUNTRY_ALIASES:
-        return COUNTRY_ALIASES[name]
-    return pycountry.countries.lookup(name).alpha_3
+def to_iso3(name):
+    """Convert a country name into the three-letter code used by the borders."""
+    if name in ALIASES:               # Checks if the name needs a manual exception.
+        return ALIASES[name]          # Returns the manually assigned ISO3 code.
+    return pycountry.countries.lookup(name).alpha_3  # Finds an ordinary ISO3 code.
 
 
-def load_country_dataset():
-    """Load the merged country dataset, or create it from the supplied cohorts."""
-    if COUNTRY_DATASET.is_file():
-        with COUNTRY_DATASET.open("rb") as file:
-            return pickle.load(file)
+def load_country_data():
+    """Load the merged country Dataset or create it from all country cohort files."""
+    if COUNTRY_DATA.is_file():        # Checks whether Question 7 already saved the Dataset.
+        with COUNTRY_DATA.open("rb") as file:  # Opens the saved Dataset.
+            return pickle.load(file)  # Returns the loaded xarray Dataset.
 
-    cohorts = load_cohort_datasets(DATA_DIR, "countries")
-    dataset = merge_cohort_datasets(cohorts, "countries")
-    with COUNTRY_DATASET.open("wb") as file:
-        pickle.dump(dataset, file, protocol=pickle.HIGHEST_PROTOCOL)
-    return dataset
+    cohorts = load_cohorts("countries")  # Loads every country cohort file.
+    dataset = merge_cohorts(cohorts, "countries")  # Adds the birth_years dimension.
+    with COUNTRY_DATA.open("wb") as file:  # Opens the output file.
+        pickle.dump(dataset, file, protocol=pickle.HIGHEST_PROTOCOL)  # Saves it.
+    return dataset                    # Returns the newly combined Dataset.
 
 
-def plot_country_exposure_map(dataset):
-    """Plot median 2025 additional exposure for six hazards by country."""
-    with BORDERS_FILE.open("rb") as file:
-        borders = pickle.load(file)
+def plot_country_map():
+    """Plot median 2025 exposure for each hazard and country."""
+    dataset = load_country_data()     # Loads country exposure data.
+    with BORDERS.open("rb") as file:  # Opens the country-border file.
+        borders = pickle.load(file)   # Loads the GeoDataFrame.
+    borders = borders.rename(columns={"abbreviation": "iso3"})  # Uses a clear column name.
 
-    if not isinstance(borders, gpd.GeoDataFrame):
-        raise TypeError("gdf_country_borders.pkl must contain a GeoDataFrame.")
+    figure, axes = plt.subplots(2, 3, figsize=(18, 10), constrained_layout=True)  # Creates six maps.
 
-    borders = borders.rename(columns={"abbreviation": "iso3"})
+    for axis, extreme in zip(axes.flat, dataset["extreme"].values):  # Loops over all hazards.
+        medians = dataset["median_val"].sel(  # Selects median values.
+            birth_years=2025,
+            extreme=extreme,
+        ).squeeze()
 
-    figure, axes = plt.subplots(
-        2, 3, figsize=(18, 10), constrained_layout=True
-    )
+        values = {}                   # Starts an empty country-code-to-value dictionary.
+        for country in medians["country"].values:  # Loops over 183 country names.
+            values[to_iso3(country)] = float(medians.sel(country=country).values)  # Converts and stores the median.
 
-    for axis, extreme in zip(axes.flat, dataset.coords["extreme"].values):
-        medians = (
-            dataset["median_val"]
-            .sel(birth_years=2025, extreme=extreme)
-            .squeeze()
-        )
+        map_data = borders.copy()     # Copies the country map before adding values.
+        map_data["median"] = map_data["iso3"].map(values)  # Matches codes and adds exposure values.
 
-        values = {}
-        for country_name in medians.coords["country"].values:
-            iso3 = country_name_to_iso3(country_name)
-            values[iso3] = float(
-                medians.sel(country=country_name).values
-            )
-
-        map_data = borders.copy()
-        map_data["median_val"] = map_data["iso3"].map(values)
-        minimum = map_data["median_val"].min()
-        maximum = map_data["median_val"].max()
-
-        if minimum < 0 < maximum:
-            cmap = "RdYlBu_r"
-            norm = colors.TwoSlopeNorm(
-                vmin=minimum, vcenter=0, vmax=maximum
-            )
-        else:
-            cmap = "YlOrRd"
-            norm = colors.Normalize(vmin=min(0, minimum), vmax=maximum)
-
-        map_data.plot(
-            column="median_val",
-            cmap=cmap,
-            norm=norm,
+        map_data.plot(                # Draws the country choropleth map.
+            column="median",
+            cmap="RdYlBu_r",
+            legend=True,
             ax=axis,
             edgecolor="white",
             linewidth=0.2,
             missing_kwds={"color": "lightgrey"},
         )
-        axis.set_title(HAZARD_NAMES.get(extreme, extreme))
-        axis.set_axis_off()
+        axis.set_title(HAZARDS.get(extreme, extreme))  # Writes the hazard name.
+        axis.set_axis_off()           # Removes map axes.
 
-        colorbar = figure.colorbar(
-            plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-            ax=axis,
-            shrink=0.65,
-        )
-        colorbar.set_label("Median additional people exposed")
-
-    figure.suptitle(
-        "Additional lifetime exposure attributable to Permian Delaware Tight\n"
-        "People born in 2025 | median estimate by country",
-        fontsize=15,
-    )
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(OUTPUT_FILE, dpi=300, bbox_inches="tight")
-    plt.close(figure)
-    return OUTPUT_FILE
+    figure.suptitle("Additional exposure for people born in 2025")  # Adds the main title.
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)  # Creates the figures folder.
+    figure.savefig(OUTPUT, dpi=300, bbox_inches="tight")  # Saves a high-resolution PNG.
+    plt.close(figure)                 # Frees memory after saving.
+    return OUTPUT                     # Returns the final image path.
 
 
 if __name__ == "__main__":
-    country_dataset = load_country_dataset()
-    saved_file = plot_country_exposure_map(country_dataset)
-    print(f"Saved Question 9 figure to: {saved_file}")
+    saved = plot_country_map()        # Runs the complete Question 9 map.
+    print("Saved:", saved)            # Prints the image location.
